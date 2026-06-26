@@ -1,3 +1,4 @@
+
 # QEDSoft
 
 QEDSoft is a verifier-guided autoformalization framework for semiconductor RTL
@@ -141,3 +142,6 @@ src/qedsoft/
 3. Add formal-tool adapters for your lab or company flow.
 4. Add seeded-bug mutation tests to measure bug-detection rate.
 5. Train or fine-tune the ranking policy using `qedsoft_result.json` memory.
+
+# QEDSoft
+
