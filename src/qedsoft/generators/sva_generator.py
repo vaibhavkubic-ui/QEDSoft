@@ -6,7 +6,10 @@ from qedsoft.models import DesignModel, FormalizationBundle, Requirement, Verifi
 
 
 class SVAGenerator:
-    """Generate SystemVerilog Assertions from QEDSoft subgoals."""
+    """Generate SystemVerilog Assertions from QEDSoft subgoals.
+
+    LLM is used first for property expression generation; template matching is the fallback.
+    """
 
     def generate(self, bundle: FormalizationBundle) -> tuple[str, str]:
         model = bundle.model
@@ -98,7 +101,53 @@ class SVAGenerator:
             ]
         )
 
-    def _expression_for_requirement(self, model: DesignModel, requirement: Requirement) -> tuple[str, str]:
+    # ------------------------------------------------------------------
+    # Expression generation — LLM first, template fallback
+    # ------------------------------------------------------------------
+
+    def _expression_for_requirement(
+        self, model: DesignModel, requirement: Requirement
+    ) -> tuple[str, str]:
+        llm_expr = self._llm_expression(model, requirement)
+        if llm_expr:
+            return llm_expr, "llm-generated"
+        return self._template_expression(model, requirement)
+
+    def _llm_expression(self, model: DesignModel, requirement: Requirement) -> str | None:
+        try:
+            from qedsoft.llm_client import chat
+
+            signal_list = ", ".join(model.signals.keys()) or "none"
+            active = "low" if model.reset_active_low else "high"
+            prompt = (
+                "Generate a SystemVerilog Assertion (SVA) property expression.\n\n"
+                f"Requirement: {requirement.text}\n"
+                f"Category: {requirement.category}\n"
+                f"Signals: {signal_list}\n"
+                f"Clock: {model.clock}\n"
+                f"Reset: {model.reset} (active {active})\n\n"
+                "Return ONLY the SVA expression body.\n"
+                "No property/endproperty keywords, no assert statement, no semicolon.\n"
+                "Examples:\n"
+                "  $rose(valid) |-> ##[1:3] ready\n"
+                "  !(wr_en && full)\n"
+                "  (count == 0) |-> empty\n"
+                "  $rose(rst_n) |=> (count == '0)"
+            )
+            response = chat(
+                prompt,
+                system="You are an SVA expert. Return only the SVA expression on a single line, nothing else.",
+            ).strip()
+            # Reject multi-line or suspiciously long responses
+            if response and len(response) < 300 and "\n" not in response:
+                return response
+            return None
+        except Exception:
+            return None
+
+    def _template_expression(
+        self, model: DesignModel, requirement: Requirement
+    ) -> tuple[str, str]:
         text = requirement.text.lower()
         signals = set(model.signals)
 
@@ -130,6 +179,10 @@ class SVAGenerator:
             return f"!$isunknown({requirement.signals[0]})", "fallback: known-value"
 
         return "1'b1", "fallback: manual-review-required"
+
+    # ------------------------------------------------------------------
+    # Template helpers (unchanged)
+    # ------------------------------------------------------------------
 
     def _parse_reset_value(self, text: str, signals: set[str]) -> str | None:
         lowered = text.lower()

@@ -6,7 +6,16 @@ from typing import Any, Literal
 
 
 Direction = Literal["input", "output", "inout", "internal", "unknown"]
-ArtifactKind = Literal["sva", "lean", "report", "bind", "metadata"]
+ArtifactKind = Literal[
+    "sva",
+    "lean",
+    "lean_matlab",
+    "lean_hdl",
+    "lean_equivalence",
+    "report",
+    "bind",
+    "metadata",
+]
 Severity = Literal["info", "warning", "error"]
 
 
@@ -121,6 +130,7 @@ class ProjectConfig:
     use_external_tools: bool = True
     max_repair_rounds: int = 2
     memory_path: Path | None = None
+    enable_source_to_lean: bool = True
 
 
 @dataclass

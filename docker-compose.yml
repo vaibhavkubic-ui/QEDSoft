@@ -5,3 +5,5 @@ services:
       - "8080:8080"
     volumes:
       - ./runs:/app/runs
+    env_file:
+      - .env

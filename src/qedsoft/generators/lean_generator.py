@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import re
 
-from qedsoft.models import FormalizationBundle
+from qedsoft.models import DesignModel, FormalizationBundle, Requirement, VerificationSubgoal
 
 
 class LeanContractGenerator:
-    """Generate a Lean4 contract skeleton for chip verification obligations.
+    """Generate a Lean4 contract for chip verification obligations.
 
-    The generated file is intentionally self-contained and compilable without a
-    custom hardware DSL. Teams can later replace the placeholder predicates with
-    a richer Lean HDL or circuit semantics.
+    LLM is used first for theorem bodies; trivial stubs are the fallback.
     """
 
     def generate(self, bundle: FormalizationBundle) -> str:
@@ -41,7 +39,6 @@ class LeanContractGenerator:
                 "",
                 "abbrev Trace := Nat -> State",
                 "",
-                "-- Replace these predicates with precise transition semantics as the model matures.",
                 "def valid_inputs (_t : Trace) : Prop := True",
                 "def rtl_transition (_prev _next : State) : Prop := True",
                 "",
@@ -52,26 +49,92 @@ class LeanContractGenerator:
             lines.extend(["theorem qedsoft_no_requirements : True := by", "  trivial", ""])
         else:
             req_by_id = {req.id: req for req in model.requirements}
+            state_field_block = self._state_field_block(model)
             for subgoal in bundle.subgoals:
                 req = req_by_id.get(subgoal.requirement_id)
                 category = req.category if req else "functional"
                 statement = req.text if req else subgoal.statement
                 theorem_name = self._safe_name(f"{subgoal.id}_{category}").lower()
-                lines.extend(
-                    [
-                        f"-- Requirement {subgoal.requirement_id}: {self._comment(statement)}",
-                        f"def {theorem_name}_property (_t : Trace) : Prop := True",
-                        f"theorem {theorem_name}_holds (t : Trace) :",
-                        f"    valid_inputs t -> {theorem_name}_property t := by",
-                        "  intro _hvalid",
-                        "  trivial",
-                        "",
-                    ]
-                )
+
+                llm_block = self._llm_theorem_block(subgoal, req, model, state_field_block, theorem_name) if req else None
+                if llm_block:
+                    lines.append(f"-- Requirement {subgoal.requirement_id}: {self._comment(statement)}")
+                    lines.extend(llm_block)
+                    lines.append("")
+                else:
+                    lines.extend(
+                        [
+                            f"-- Requirement {subgoal.requirement_id}: {self._comment(statement)}",
+                            f"def {theorem_name}_property (_t : Trace) : Prop := True",
+                            f"theorem {theorem_name}_holds (t : Trace) :",
+                            f"    valid_inputs t -> {theorem_name}_property t := by",
+                            "  intro _hvalid",
+                            "  trivial",
+                            "",
+                        ]
+                    )
 
         lines.append(f"end QEDSoft_{self._safe_name(model.top_module)}")
         lines.append("")
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Theorem generation — LLM first, trivial stub fallback
+    # ------------------------------------------------------------------
+
+    def _llm_theorem_block(
+        self,
+        subgoal: VerificationSubgoal,
+        req: Requirement,
+        model: DesignModel,
+        state_field_block: str,
+        theorem_name: str,
+    ) -> list[str] | None:
+        try:
+            from qedsoft.llm_client import chat
+
+            prompt = (
+                "Write a Lean4 property definition and theorem for this hardware requirement.\n\n"
+                f"Requirement: {req.text}\n"
+                f"Category: {req.category}\n\n"
+                "The Lean4 context already defines:\n"
+                "  structure State where\n"
+                f"{state_field_block}\n"
+                "  abbrev Trace := Nat -> State\n"
+                "  def valid_inputs (_t : Trace) : Prop := True\n\n"
+                f"Write exactly:\n"
+                f"1. `def {theorem_name}_property (_t : Trace) : Prop := <predicate>`\n"
+                f"2. `theorem {theorem_name}_holds (t : Trace) : valid_inputs t -> {theorem_name}_property t := by`\n"
+                "   followed by proof tactics (intro, simp, omega, trivial, decide, or sorry).\n\n"
+                "Return ONLY valid Lean4 code, no explanation, no markdown fences."
+            )
+            response = chat(
+                prompt,
+                system="You are a Lean4 expert. Return only valid Lean4 code, no explanation.",
+            ).strip()
+            if response.startswith("```"):
+                response = re.sub(r"```(?:lean4?)?\n?", "", response).rstrip("`").strip()
+
+            if theorem_name in response and ("def " in response or "theorem " in response):
+                return response.splitlines()
+            return None
+        except Exception:
+            return None
+
+    def _state_field_block(self, model: DesignModel) -> str:
+        state_signals = [
+            s for s in model.signals.values() if s.name not in {model.clock, model.reset}
+        ]
+        if not state_signals:
+            return "    dummy : Bool"
+        return "\n".join(
+            f"    {self._safe_name(s.name)} : {'Bool' if s.width <= 1 else 'Nat'}"
+            for s in state_signals
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     def _safe_name(self, value: str) -> str:
         name = re.sub(r"[^A-Za-z0-9_]", "_", value)

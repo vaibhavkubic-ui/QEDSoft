@@ -25,6 +25,24 @@ class MarkdownReportWriter:
         for artifact in result.artifacts:
             lines.append(f"- `{artifact.kind}`: `{artifact.path}`")
 
+        source_artifacts = [
+            artifact
+            for artifact in result.artifacts
+            if artifact.kind in {"lean_matlab", "lean_hdl", "lean_equivalence"}
+        ]
+        if source_artifacts:
+            lines.extend(["", "## Job 1: Source To Lean4", ""])
+            for artifact in source_artifacts:
+                metadata = artifact.metadata or {}
+                metrics = metadata.get("metrics", {})
+                lines.append(f"- `{artifact.kind}`: `{artifact.path}`")
+                lines.append(f"  Metrics: `{json.dumps(metrics)}`")
+                for diagnostic in metadata.get("diagnostics", []):
+                    location = f" line {diagnostic.get('line')}" if diagnostic.get("line") else ""
+                    lines.append(
+                        f"  {diagnostic.get('severity', 'info').upper()}{location}: {diagnostic.get('message')}"
+                    )
+
         lines.extend(["", "## Verification Results", ""])
         for verification in result.verification_results:
             lines.append(f"### {verification.tool}")
