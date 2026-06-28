@@ -1,0 +1,11 @@
+PS C:\QEDSoft> @'
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/next"
+    }
+  ]
+}
+'@ | Out-File -FilePath vercel.json -Encoding utf8
