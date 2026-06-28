@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://qedsoft-production.up.railway.app',
-  },
-}
+  output: 'export',
+  distDir: 'dist',
+};
 
-export default nextConfig
+export default nextConfig;
