@@ -28,22 +28,6 @@ export default function Navbar() {
         <div className="flex items-center gap-1">
           {link('/', 'Home')}
           {link('/verify', 'Verify')}
-          <a
-            href="https://qedsoft-production.up.railway.app/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
-          >
-            API Docs
-          </a>
-          <a
-            href="https://github.com/vaibhavkubic-ui/QEDSoft"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
-          >
-            GitHub
-          </a>
         </div>
       </div>
     </nav>
